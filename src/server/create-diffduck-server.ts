@@ -3,7 +3,7 @@ import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@model
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { fail, type Result } from "../domain/discussion.js";
-import { projectToolResult, toolContracts, type DuckError, type ToolName } from "../protocol/diffduck.js";
+import { appToolResultEnvelopeSchema, encodeAppToolResult, projectToolResult, toolContracts, type DuckError, type ToolName } from "../protocol/diffduck.js";
 import type { ReviewSessions } from "../service/review-sessions.js";
 
 const resourceUri = "ui://diffduck/review.html";
@@ -26,18 +26,20 @@ export function createDiffDuckServer(sessions: ReviewSessions, readAppHtml: () =
       title: name.replaceAll("_", " "), description,
       // Pass the complete strict schema: passing .shape would discard root strictness.
       inputSchema: boundarySchema,
-      // MCP output schemas must be objects. Errors use isError and are parsed separately.
-      outputSchema: toolContracts[name].output.options[0].unwrap(),
+      // The SDK requires an object success schema; errors travel as typed JSON text.
+      outputSchema: visibility === "app" ? appToolResultEnvelopeSchema : toolContracts[name].output.options[0].unwrap(),
       annotations: { readOnlyHint: readOnly, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: { ui: renders ? { resourceUri, visibility: [visibility] } : { visibility: [visibility] } },
     }, (raw: unknown): CallToolResult => {
       const parsed = inputSchema.safeParse(raw);
       const result = projectToolResult(parsed.success ? execute(parsed.data) : fail("InvalidInput", "The command does not match the DiffDuck tool contract."));
-      const content = result._tag === "Err" ? result.error.message
-        : name === "get_diffduck_question" || name === "respond_in_diffduck" ? JSON.stringify(result)
-        : renders ? "Opened DiffDuck. Select code to discuss its developer-facing effect."
-        : "DiffDuck discussion state updated.";
-      return { isError: result._tag === "Err", structuredContent: result, content: [{ type: "text", text: content }] };
+      const wireResult = visibility === "app" ? encodeAppToolResult(result) : result;
+      const content: CallToolResult["content"] = [{ type: "text", text: JSON.stringify(wireResult) }];
+      // Clients validate any structuredContent against the success-only schema,
+      // even when isError is true. Preserve typed failures in JSON text instead.
+      if (result._tag === "Err") return { isError: true, content };
+      // Both standard representations carry the complete success result.
+      return { isError: false, structuredContent: wireResult, content };
     });
   }
 

@@ -118,6 +118,13 @@ export class DiscussionController {
   selectLines(target: QuestionTarget): void {
     this.updateActive((tab) => ({ ...tab, message: null, draft: { ...tab.draft, target, revisionId: tab.displayedRevisionId, questionId: null } }));
   }
+  /** Attach explicitly selected source in the revision trail, preserving the draft text and reply anchor. */
+  attachRevision(id: ExampleRevisionId, target: QuestionTarget): void {
+    if (!this.activeScenario()?.revisions.some((revision) => revision.id === id)) return;
+    this.updateActive((tab) => ({ ...tab, displayedRevisionId: id, message: null,
+      draft: { ...tab.draft, questionId: null, revisionId: id, target },
+    }));
+  }
   /** Show a historical revision without silently retargeting an already written draft. */
   selectRevision(id: ExampleRevisionId): void {
     const scenario = this.activeScenario();

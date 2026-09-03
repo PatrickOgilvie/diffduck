@@ -2,9 +2,10 @@ import { z } from "zod";
 import type { App } from "@modelcontextprotocol/ext-apps";
 import type { AdoptAlternative, PrepareQuestion, QuestionRef, ReadSession, RecordDelivery } from "../domain/commands.js";
 import type { Result, SessionSnapshot } from "../domain/discussion.js";
-import { fail, ok } from "../domain/discussion.js";
+import { fail } from "../domain/discussion.js";
 import { toolContracts, type AppToolName, type DuckError } from "../protocol/diffduck.js";
 import type { PreparedQuestion, SessionRead } from "../service/review-sessions.js";
+import { parseDiffDuckToolResult } from "./diffduck-tool-result.js";
 
 /** Caller-owned cancellation for every asynchronous host operation. */
 export type AsyncOptions = { readonly signal?: AbortSignal };
@@ -74,15 +75,10 @@ export class DiffDuckBridge implements DiscussionPort {
     try {
       const response = await this.app.callServerTool({ name, arguments: input }, options);
       if (options.signal?.aborted) return fail("Cancelled", "The operation was cancelled.");
-      const parsed = schema.safeParse(response.structuredContent);
-      if (!parsed.success) return response.isError === true
-        ? fail("InvalidInput", "The host rejected this DiffDuck command. Your draft has been kept.")
-        : fail("InvalidHostResponse", "DiffDuck received an invalid response. Its existing discussion has been kept.");
-      if (response.isError === true && parsed.data._tag === "Ok") return fail("InvalidHostResponse", "The host response contained inconsistent success information.");
-      return parsed.data._tag === "Err" ? parsed.data : ok(parsed.data.value);
+      return parseDiffDuckToolResult(name, response, schema);
     } catch {
       return options.signal?.aborted ? fail("Cancelled", "The operation was cancelled.")
-        : fail("HostUnavailable", "The connection to DiffDuck is unavailable. Your draft has been kept.");
+        : fail("HostUnavailable", `The connection to DiffDuck is unavailable. Your draft has been kept. Details: DD_REQUEST_V1 ${name}.`);
     }
   }
 }

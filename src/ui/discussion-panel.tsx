@@ -39,6 +39,7 @@ export function DiscussionPanel({ controller, state, scenario, tab, composerRef,
   const pending = state.session?.scenarios.flatMap((item) => item.questions).find((question) => question.state._tag === "Pending");
   const draftRevision: ExampleRevision | undefined = scenario.revisions.find((revision) => revision.id === tab.draft.revisionId);
   const draftNumber = scenario.revisions.findIndex((revision) => revision.id === tab.draft.revisionId) + 1;
+  const displayedNumber = scenario.revisions.findIndex((revision) => revision.id === tab.displayedRevisionId) + 1;
   const captured = draftRevision === undefined ? null : captureTarget(tab.draft.target, { before: draftRevision.scenario.before.code, after: draftRevision.scenario.after.code });
   const disabled = !interactive || state.connection === "unavailable";
   const sendingDisabled = disabled || state.activity !== "idle" || state.synchronization !== "current" || pending !== undefined || tab.draft.text.trim().length === 0;
@@ -93,9 +94,9 @@ export function DiscussionPanel({ controller, state, scenario, tab, composerRef,
       <details className="draft-context"><summary>{scopeLabel(tab.draft.target)} <span>· r{draftNumber}</span></summary>
         {captured?._tag === "Ok" && captured.value._tag === "Lines" ? <pre><code>{captured.value.selectedText}</code></pre> : <p>Both complete code panes and this tab's preceding discussion will be attached.</p>}
         {draftRevision !== undefined ? <details><summary>Inspect full example</summary><pre><code>{draftRevision.scenario.before.code}</code></pre><pre><code>{draftRevision.scenario.after.code}</code></pre></details> : null}
-        <button type="button" onClick={() => controller.attachDisplayedExample()}>Attach whole displayed example</button>
+        <button type="button" disabled={disabled} onClick={() => controller.attachDisplayedExample()}>Attach whole revision {displayedNumber}</button>
       </details>
-      {tab.draft.revisionId !== tab.displayedRevisionId ? <p className="draft-warning">Your draft still refers to revision {draftNumber}. <button type="button" onClick={() => controller.attachDisplayedExample()}>Use the displayed revision</button></p> : null}
+      {tab.draft.revisionId !== tab.displayedRevisionId ? <p className="draft-warning">Your draft still refers to revision {draftNumber}. <button type="button" disabled={disabled} onClick={() => controller.attachDisplayedExample()}>Attach revision {displayedNumber}</button></p> : null}
       <label className="sr-only" htmlFor={`draft-${scenario.scenarioId}`}>Question about this example</label>
       <textarea ref={composerRef} id={`draft-${scenario.scenarioId}`} rows={3} maxLength={8_000} disabled={disabled} value={tab.draft.text}
         placeholder="What feels better, worse, or still unresolved?" onChange={(event) => controller.editDraft(event.target.value)}

@@ -52,6 +52,18 @@ export const toolContracts = {
 export type ToolName = keyof typeof toolContracts;
 /** Tools the interactive app may invoke. */
 export type AppToolName = Exclude<ToolName, "show_diffduck_review" | "get_diffduck_question" | "respond_in_diffduck">;
+/** Whether a known tool returns data to the app rather than directly to the model. */
+export function isAppTool(name: ToolName): name is AppToolName {
+  return name !== "show_diffduck_review" && name !== "get_diffduck_question" && name !== "respond_in_diffduck";
+}
+/** App-only wire envelope: nested nulls and all snapshot values remain inside JSON text. */
+export const appToolResultEnvelopeSchema = z.strictObject({
+  format: z.literal("diffduck.app-result.v1"), json: z.string(),
+});
+/** Encode a typed result for the app transport, without changing its domain contract. @template T */
+export function encodeAppToolResult<T>(result: Result<T, DuckError>): z.output<typeof appToolResultEnvelopeSchema> {
+  return { format: "diffduck.app-result.v1", json: JSON.stringify(projectToolResult(result)) };
+}
 /** Parsed input for a specific tool. @template K */
 export type ToolInput<K extends ToolName> = z.output<(typeof toolContracts)[K]["input"]>;
 /** Parsed result for a specific tool. @template K */

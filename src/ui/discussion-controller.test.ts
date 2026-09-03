@@ -28,6 +28,36 @@ function setup() {
 }
 
 describe("discussion controller", () => {
+  it("attaches a panel's source atomically without losing draft text, reply anchors or another tab's draft", async () => {
+    const { controller, sessions, snapshot } = setup();
+    const a = snapshot.scenarios[0]; const b = snapshot.scenarios[1];
+    if (a === undefined || b === undefined) throw new Error("Missing scenarios");
+    try {
+      controller.setIntent("explore-alternative"); controller.editDraft("Original question"); controller.submit(); await controller.settled();
+      const question = controller.getSnapshot().session?.scenarios[0]?.questions[0];
+      if (question === undefined) throw new Error("Missing question");
+      const { context } = question;
+      expect(sessions.respond(respondSchema.parse({ sessionId: snapshot.sessionId, questionId: context.question.id, contextId: context.id, response: {
+        _tag: "Answered", text: "Try a smaller call site.", alternative: { basedOnRevisionId: a.currentRevisionId, after: { label: "Alternative", code: "compose(input);\n" }, observations: ["One call."] },
+      } }))._tag).toBe("Ok");
+      controller.checkAgain(); await controller.settled();
+      controller.adopt(context.question.id); await controller.settled();
+      const current = controller.getSnapshot().session?.scenarios[0]?.currentRevisionId;
+      if (current === undefined) throw new Error("Missing current revision");
+      controller.selectTab(b.scenarioId); controller.editDraft("B draft"); controller.selectTab(a.scenarioId);
+      controller.replyTo(context.question.id); controller.editDraft("Keep my follow-up draft");
+      const target = { _tag: "Lines", side: "after", startLine: 1, endLine: 1 } as const;
+      controller.attachRevision(current, target);
+      expect(controller.getSnapshot().tabs.get(a.scenarioId)).toMatchObject({ displayedRevisionId: current, draft: { revisionId: current, target, text: "Keep my follow-up draft", replyToQuestionId: context.question.id, questionId: null } });
+      const attached = controller.getSnapshot();
+      controller.attachRevision(b.currentRevisionId, target);
+      expect(controller.getSnapshot()).toBe(attached);
+      controller.submit(); await controller.settled();
+      expect(controller.getSnapshot().session?.scenarios[0]?.questions[1]?.context.question).toMatchObject({ exampleRevisionId: current, replyToQuestionId: context.question.id, target: { ...target, selectedText: "compose(input);\n" } });
+      expect(controller.getSnapshot().tabs.get(b.scenarioId)?.draft.text).toBe("B draft");
+    } finally { controller.dispose(); await controller.settled(); }
+  });
+
   it.each(["InvalidHostResponse", "HostUnavailable", "InvalidInput"] as const)("recovers committed preparation after %s without sending it", async (failure) => {
     const { controller, sessions, port, snapshot, sent } = setup();
     const a = snapshot.scenarios[0];

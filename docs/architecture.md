@@ -20,10 +20,32 @@ Mounted UI ← conditional session read ← stored terminal response
 | domain/commands, protocol/diffduck | Strict command/result boundaries and exported protocol |
 | service/review-sessions | Immutable histories, guarded transitions, identities and capacity |
 | server/create-diffduck-server | MCP registration, visibility and UI resource metadata |
-| ui/diffduck-bridge | Validated host tool results and delivery classification |
+| ui/diffduck-bridge, ui/diffduck-tool-result | Validated host tool results, safe response diagnostics and delivery classification |
 | ui/discussion-controller | Per-tab drafts, selection, unread state, dispatch and bounded polling |
 | ui/code-comparison, ui/discussion-panel | Read-only examples, annotations, transcript and composer |
+| ui/revision-trail, ui/revision-panels | Horizontal chronological columns and translation of adjacent-diff coordinates into saved source identities |
+| ui/review-surface | Shared review screen, independent of host setup and development controls |
 | ui/app-lifetime | Setup/fullscreen/teardown promise ownership |
+| dev/main, dev/development-session | Optional development-page lifetime, real in-memory service and simulated delivery/replies |
+| dev/workbench-app | Local preview controls and strict review-JSON import |
+
+## Fast visual development
+
+`index.html` is a separate Vite development entry. It mounts `WorkbenchApp` around the same `ReviewSurface` that `DiffDuckApp` uses in Codex. The production build still has only `mcp-app.html` as its entry and does not import development code.
+
+The development entrypoint owns its `DevelopmentSession` and `DiscussionController`, not a React effect. Component Fast Refresh can rerun effects and replace React implementations without disposing the session or losing its drafts. Each module exporting a UI component remains a React refresh boundary. CSS updates do not reload the document. Changes to the session/controller/entrypoint can trigger a full reload and intentionally begin a new local session.
+
+The development adapter implements the existing `DiscussionPort`, backed by the real `ReviewSessions` service. Only message delivery and model answers are simulated. Replies use frozen question identities, not the active tab; cancellation, alternative adoption, revisions, capacity limits and per-tab state follow production behavior. Timers and controller operations are cancelled/drained on replacement or unload. Review JSON is parsed through the production opening schema before replacement; malformed or oversized input does not dispose the current review.
+
+This adds no MCP network transport, public endpoint, credential reader or model SDK. Browser sessions and installed-plugin sessions are independent. The loopback Vite server is opt-in and is not packaged; real Codex-host handoff remains a separate integration check.
+
+## Revision trail
+
+The shared screen renders the original before-file followed by every retained after-revision in a horizontally scrolling rail. Each after-column uses Diffs' unified `MultiFileDiff` against its immediate predecessor; the baseline uses `File`. This composes single-column views, not an N-way aligned merge editor. Parent links must describe a complete chronological chain; missing or out-of-order predecessors produce an explicit error instead of a guessed comparison.
+
+`revision-panels` translates Diffs coordinates into `{ revisionId, target }`. An addition in revision 2 belongs to revision 2's after-pane. A deletion in that column belongs to revision 1's after-pane, **not** revision 2's immutable original before-pane. The first comparison's deletions belong to the original before-pane. Mixed-side and out-of-source selections are rejected. Annotations use the inverse mapping, so a saved question can appear at both representations of its exact source. The controller attaches the revision and target atomically while preserving draft text and reply anchors; question preparation still derives selected text from the real saved source.
+
+New adoptions reveal the appended column. Focusing a historical question reveals its source column; ordinary selection does not jump horizontally. Each scenario retains its own horizontal position. Code inputs and panel descriptions are memoized so typing in the composer does not reparse all comparisons. The Diffs custom-header slot hosts actions; disabling its header in 1.3.6 can leave an empty initial render, so that option is deliberately avoided.
 
 ## Invariants
 
@@ -33,7 +55,11 @@ The service derives selected text from normalized, stored code, not browser-supp
 
 Preparing checks the scenario transcript version the user saw. Adoption checks both the current revision and the alternative's base. It retains the before-pane and all old revisions. Existing drafts are not silently re-anchored by adoption or historical viewing.
 
-Only the opening tool renders a resource. Other success results are typed data; only errors set `isError`. The SDK requires an object success output schema, so the server publishes that schema while the UI also parses the explicit error result union.
+Only the opening tool renders a resource. Success results carry the same complete wire representation in `structuredContent` and one JSON text block. The three model-facing tools retain their domain-shaped results. The five app-only tools use `{ format: "diffduck.app-result.v1", json: "<serialized typed result>" }`, keeping nested values inside a string across the embedded host boundary. The published app-tool output schema describes that envelope; the receiving adapter parses the envelope, decodes its JSON and then applies the unchanged strict domain result schema.
+
+Errors set `isError: true` and carry their wire representation in JSON text without `structuredContent`. This keeps model-tool failures out of their success-only structured output schemas. Neither missing fields nor invalid values are replaced with defaults, and malformed structured envelopes cannot fall back to a different text result.
+
+The opening notification and subsequent tool calls share one strict decoder. It uses structured data when present, otherwise exactly one JSON text block; malformed structured data cannot be disguised by a valid text block. Invalid responses produce a bounded `DD_RESPONSE_V1` diagnostic with the operation, response source and allowlisted schema paths/codes only. Host-call failures produce `DD_REQUEST_V1`. Neither diagnostic includes code, question text, raw host errors, received values or unknown property names. No automatic question retry is introduced.
 
 Session mutations commit synchronously after capacity validation. No persistence or silent pruning occurs. IDs are local capabilities, not user-account authentication. Tool visibility is host-enforced metadata, not a substitute for an authorization server if a network transport is added later.
 

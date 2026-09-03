@@ -22,7 +22,7 @@ button, summary, select { touch-action: manipulation; }
 button, summary { cursor: pointer; }
 button:disabled, textarea:disabled, select:disabled { cursor: not-allowed; opacity: .5; }
 button { border: 1px solid var(--border); border-radius: 7px; background: var(--surface); padding: 7px 10px; }
-button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, article:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button:focus-visible, summary:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, article:focus-visible, .revision-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 h1, h2, h3, h4, p { margin-top: 0; }
 h1, h2, h3 { text-wrap: balance; }
 h1 { font-size: 24px; letter-spacing: -.035em; font-weight: 620; margin-bottom: 9px; }
@@ -61,14 +61,30 @@ select { max-width: 100%; border: 1px solid var(--border); border-radius: 6px; p
 .example-column { min-width: 0; padding: 23px 24px; max-height: 760px; overflow: auto; scrollbar-gutter: stable; }
 .scenario-intro { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 20px; }
 .scenario-intro p { font-size: 12px; color: var(--muted); max-width: 620px; margin: 0; }
-.revision-picker { flex-shrink: 0; display: grid; gap: 6px; color: var(--muted); font-size: 10px; }
-.comparison-card { overflow: clip; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
-.comparison-headings { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); font-size: 11px; }
-.comparison-headings > div { padding: 11px 12px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
-.comparison-headings > div + div { border-left: 1px solid var(--border); }
-.comparison-headings small { font-size: 9px; color: var(--muted); margin-left: auto; }
-.before-dot, .after-dot { width: 6px; height: 6px; border-radius: 50%; background: #b67847; }
-.after-dot { background: #55874d; }
+.revision-history { min-width: 0; }
+.revision-history-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 13px; }
+.revision-history-toolbar > div:first-child { display: grid; gap: 5px; }
+.revision-history-toolbar strong { font-size: 12px; font-weight: 600; }
+.revision-history-toolbar span, .revision-history-hint { color: var(--muted); font-size: 10px; }
+.revision-scroll-actions { display: flex; gap: 5px; }
+.revision-scroll-actions button { min-width: 30px; padding: 5px 8px; font-size: 11px; }
+.revision-scroll { overflow-x: auto; overscroll-behavior-x: contain; padding: 3px 2px 14px; scrollbar-color: var(--muted) var(--raised); }
+.revision-columns { display: flex; align-items: flex-start; gap: 12px; }
+.revision-column { flex: 0 0 max(340px, calc((100% - 12px) / 2)); min-width: 0; border: 1px solid var(--border); border-radius: 9px; overflow: clip; background: var(--surface); }
+.revision-column.is-attached { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.revision-column-heading { padding: 13px 12px 11px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.revision-column-heading > div { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.revision-column-heading h3 { font-size: 13px; font-weight: 620; margin: 0; }
+.revision-column-number { font: 9px var(--code-font); color: var(--muted); }
+.revision-badge { border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-size: 9px; color: var(--accent); }
+.revision-column-heading p { margin: 8px 0 4px; font-size: 11px; }
+.revision-column-heading p span, .revision-compared-with { color: var(--muted); font-size: 10px; }
+.revision-file-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+.revision-file-heading > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 100%; font: 10px var(--code-font); color: var(--muted); }
+.revision-observations { padding: 12px; border-top: 1px solid var(--border); }
+.revision-observations p { font-size: 11px; color: var(--muted); margin: 0 0 6px; }
+.revision-observations p:last-child { margin-bottom: 0; }
+.revision-history-hint { margin: 7px 0 0; }
 .diffduck-diff { --diffs-font-size: 12px; --diffs-line-height: 23px; --diffs-font-family: var(--code-font); }
 .diff-actions, .selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .diff-actions button { padding: 4px 7px; font-size: 10px; }
@@ -83,9 +99,6 @@ select { max-width: 100%; border: 1px solid var(--border); border-radius: 6px; p
 .selection-actions button { font-size: 10px; padding: 5px 7px; }
 .line-discussion { width: 100%; border: 0; border-radius: 0; text-align: left; font: 11px/1.5 -apple-system, sans-serif; padding: 9px 12px; white-space: normal; overflow-wrap: anywhere; background: var(--raised); }
 .line-discussion span { color: var(--accent); }
-.example-observations { margin-top: 19px; }
-.example-observations p { display: flex; align-items: baseline; gap: 9px; color: var(--muted); font-size: 12px; margin-bottom: 9px; }
-.example-observations span { color: var(--accent); }
 .example-footnote { color: var(--muted); font-size: 10px; margin: 20px 0 0; }
 .discussion-panel { display: flex; flex-direction: column; min-width: 0; border-left: 1px solid var(--border); background: var(--surface); max-height: 760px; }
 .discussion-heading { display: flex; align-items: center; justify-content: space-between; padding: 23px 20px 15px; border-bottom: 1px solid var(--border); }
@@ -164,9 +177,7 @@ select { max-width: 100%; border: 1px solid var(--border); border-radius: 6px; p
   .scenario-tabs { padding-inline: 10px; }
   .example-column { padding: 20px 12px; }
   .scenario-intro { gap: 12px; }
-  .revision-picker { max-width: 120px; }
-  .comparison-headings > div { padding-inline: 8px; }
-  .comparison-headings small { margin-left: 0; }
+  .revision-column { flex-basis: min(340px, calc(100% - 18px)); }
   .diffduck-diff { --diffs-font-size: 10px; --diffs-line-height: 21px; }
   .app-footer { padding-inline: 15px; flex-direction: column; }
 }

@@ -9,6 +9,12 @@ const unavailableShikiWasm = resolve(import.meta.dirname, "src/ui/shiki-wasm-una
 export default defineConfig({
   base: "./",
   plugins: [react(), viteSingleFile()],
+  server: {
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
+    fs: { strict: true, allow: [import.meta.dirname] },
+  },
   resolve: {
     // DiffDuck accepts a deliberately small language set. The exact alias keeps
     // Shiki's full grammar catalogue out of the single-file MCP resource.

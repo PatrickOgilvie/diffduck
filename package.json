@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json && vite build && esbuild src/server/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/server/main.js --sourcemap",
     "dev": "vite",
+    "dev:check": "tsc --noEmit --watch -p tsconfig.json",
     "start": "node dist/server/main.js",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",

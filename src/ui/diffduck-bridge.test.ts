@@ -4,13 +4,14 @@ import { DiffDuckBridge } from "./diffduck-bridge.js";
 import { readSessionSchema } from "../domain/commands.js";
 import { testUuid } from "../testing/fixtures.js";
 import { sessionVersionSchema } from "../domain/discussion.js";
+import { encodeAppToolResult } from "../protocol/diffduck.js";
 
 const unchanged = { _tag: "Unchanged" as const, version: sessionVersionSchema.parse(0) };
 
 function host() {
   let calls = 0;
   const app: Pick<App, "callServerTool" | "sendMessage"> = {
-    callServerTool: async () => { calls++; return { content: [], structuredContent: { _tag: "Ok", value: unchanged } }; },
+    callServerTool: async () => { calls++; return { content: [], structuredContent: encodeAppToolResult({ _tag: "Ok", value: unchanged }) }; },
     sendMessage: async () => ({}),
   };
   return { app, calls: () => calls, bridge: new DiffDuckBridge(app) };
@@ -34,9 +35,9 @@ describe("MCP Apps adapter", () => {
   });
   it("rejects malformed or inconsistent tool data without trusting the host", async () => {
     const { app, bridge } = host();
-    app.callServerTool = async () => ({ content: [], structuredContent: { _tag: "Ok", value: { ...unchanged, extra: true } } });
+    app.callServerTool = async () => ({ content: [], structuredContent: encodeAppToolResult({ _tag: "Ok", value: { ...unchanged, extra: true } }) });
     expect(await bridge.read(read, {})).toMatchObject({ _tag: "Err", error: { _tag: "InvalidHostResponse" } });
-    app.callServerTool = async () => ({ content: [], isError: true, structuredContent: { _tag: "Ok", value: unchanged } });
+    app.callServerTool = async () => ({ content: [], isError: true, structuredContent: encodeAppToolResult({ _tag: "Ok", value: unchanged }) });
     expect(await bridge.read(read, {})).toMatchObject({ _tag: "Err", error: { _tag: "InvalidHostResponse" } });
     app.callServerTool = async () => { throw new Error("private exception"); };
     expect(await bridge.read(read, {})).toMatchObject({ _tag: "Err", error: { _tag: "HostUnavailable" } });

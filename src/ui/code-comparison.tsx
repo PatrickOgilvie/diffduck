@@ -1,75 +1,77 @@
 import { memo, useCallback, useMemo } from "react";
-import { MultiFileDiff } from "@pierre/diffs/react";
-import type { DiffLineAnnotation, FileContents, FileDiffOptions, SelectedLineRange } from "@pierre/diffs";
-import type { ExampleRevision, QuestionId, QuestionRecord, QuestionTarget } from "../domain/discussion.js";
-import { captureTarget, questionTargetSchema } from "../domain/discussion.js";
+import { File, MultiFileDiff } from "@pierre/diffs/react";
+import type { DiffLineAnnotation, FileContents, FileDiffOptions, FileOptions, SelectedLineRange } from "@pierre/diffs";
+import { z } from "zod";
+import type { QuestionId, QuestionIntent, QuestionRecord } from "../domain/discussion.js";
+import { resolveRevisionSelection, selectionInRevisionPanel, type RevisionPanel, type RevisionSelection } from "./revision-panels.js";
 
 type Annotation = { readonly _tag: "Selection" } | { readonly _tag: "Question"; readonly id: QuestionId; readonly text: string };
 type Props = {
-  readonly revision: ExampleRevision;
+  readonly panel: RevisionPanel;
   readonly questions: readonly QuestionRecord[];
-  readonly selection: QuestionTarget;
+  readonly selection: RevisionSelection;
   readonly themeType: "light" | "dark";
   readonly disabled: boolean;
-  readonly onSelect: (selection: QuestionTarget) => void;
-  readonly onAsk: () => void;
-  readonly onExplore: () => void;
+  readonly onSelect: (selection: RevisionSelection) => void;
+  readonly onDiscuss: (selection: RevisionSelection, intent: QuestionIntent) => void;
   readonly onQuestion: (id: QuestionId) => void;
-  readonly onInvalidSelection: () => void;
+  readonly onInvalidSelection: (message: string) => void;
 };
 
-/** Render a read-only before/after surface with one-sided selection and historical discussion markers. */
-export const CodeComparison = memo(function CodeComparison({ revision, questions, selection, themeType, disabled, onSelect, onAsk, onExplore, onQuestion, onInvalidSelection }: Props) {
-  const scenario = revision.scenario;
-  const oldFile = useMemo<FileContents>(() => ({ name: scenario.filename, lang: scenario.language, contents: scenario.before.code }), [scenario.filename, scenario.language, scenario.before.code]);
-  const newFile = useMemo<FileContents>(() => ({ name: scenario.filename, lang: scenario.language, contents: scenario.after.code }), [scenario.filename, scenario.language, scenario.after.code]);
+const rangeFieldsSchema = z.strictObject({ side: z.enum(["additions", "deletions"]), start: z.coerce.number().int().positive().safe(), end: z.coerce.number().int().positive().safe() });
+
+/** One baseline file or one inline diff against its predecessor, with source-correct discussion actions. */
+export const CodeComparison = memo(function CodeComparison({ panel, questions, selection, themeType, disabled, onSelect, onDiscuss, onQuestion, onInvalidSelection }: Props) {
+  const { source, previous } = panel;
+  const newFile = useMemo<FileContents>(() => ({ name: source.revision.scenario.filename, lang: source.revision.scenario.language, contents: source.revision.scenario[source.side].code }), [source.revision.scenario, source.side]);
+  const oldFile = useMemo<FileContents | null>(() => previous === null ? null : { name: previous.revision.scenario.filename, lang: previous.revision.scenario.language, contents: previous.revision.scenario[previous.side].code }, [previous]);
+  const selectedLines = selectionInRevisionPanel(panel, selection);
   const acceptRange = useCallback((range: SelectedLineRange | null) => {
-    if (range === null) { onSelect({ _tag: "WholeExample" }); return; }
-    const side = range.side ?? "additions";
-    if ((range.endSide ?? side) !== side) { onInvalidSelection(); return; }
-    onSelect({ _tag: "Lines", side: side === "deletions" ? "before" : "after", startLine: Math.min(range.start, range.end), endLine: Math.max(range.start, range.end) });
-  }, [onSelect, onInvalidSelection]);
-  const options = useMemo<FileDiffOptions<Annotation>>(() => ({
-    diffStyle: "split", diffIndicators: "bars", lineDiffType: "word-alt", overflow: "wrap",
-    preferredHighlighter: "shiki-js", theme: { dark: "pierre-dark", light: "pierre-light" }, themeType,
-    stickyHeader: true, hunkSeparators: "line-info", enableLineSelection: !disabled, enableGutterUtility: false,
-    lineHoverHighlight: "line", onLineSelected: acceptRange,
-  }), [themeType, disabled, acceptRange]);
+    if (disabled) return;
+    const parsed = resolveRevisionSelection(panel, range);
+    if (parsed._tag === "Err") onInvalidSelection(parsed.error.message); else onSelect(parsed.value);
+  }, [disabled, panel, onSelect, onInvalidSelection]);
+  const commonOptions = useMemo(() => ({
+    overflow: "wrap", preferredHighlighter: "shiki-js", theme: { dark: "pierre-dark", light: "pierre-light" }, themeType,
+    stickyHeader: false, enableLineSelection: !disabled, enableGutterUtility: false, lineHoverHighlight: "line", onLineSelected: acceptRange,
+  } satisfies FileOptions<Annotation>), [themeType, disabled, acceptRange]);
+  const diffOptions = useMemo<FileDiffOptions<Annotation>>(() => ({ ...commonOptions,
+    diffStyle: "unified", diffIndicators: "bars", lineDiffType: "word-alt", hunkSeparators: "line-info", expandUnchanged: true,
+  }), [commonOptions]);
   const annotations = useMemo<DiffLineAnnotation<Annotation>[]>(() => {
     const result: DiffLineAnnotation<Annotation>[] = [];
-    for (const question of questions) {
-      const { target } = question.context.question;
-      if (question.context.example.id !== revision.id || target._tag !== "Lines") continue;
-      result.push({ side: target.side === "before" ? "deletions" : "additions", lineNumber: target.endLine,
-        metadata: { _tag: "Question", id: question.context.question.id, text: question.context.question.text },
-      });
+    for (const record of questions) {
+      const question = record.context.question;
+      const range = selectionInRevisionPanel(panel, { revisionId: question.exampleRevisionId, target: question.target });
+      if (range !== null) result.push({ side: range.side ?? "additions", lineNumber: range.end, metadata: { _tag: "Question", id: question.id, text: question.text } });
     }
-    if (selection._tag === "Lines" && !disabled) result.push({ side: selection.side === "before" ? "deletions" : "additions", lineNumber: selection.endLine, metadata: { _tag: "Selection" } });
+    const range = selectionInRevisionPanel(panel, selection);
+    if (range !== null && !disabled) result.push({ side: range.side ?? "additions", lineNumber: range.end, metadata: { _tag: "Selection" } });
     return result;
-  }, [questions, revision.id, selection, disabled]);
-  const selectedLines: SelectedLineRange | null = selection._tag === "Lines"
-    ? { start: selection.startLine, end: selection.endLine, side: selection.side === "before" ? "deletions" : "additions" } : null;
+  }, [panel, questions, selection, disabled]);
+  const discuss = (intent: QuestionIntent) => onDiscuss(selectedLines === null ? { revisionId: source.revision.id, target: { _tag: "WholeExample" } } : selection, intent);
+  const renderAnnotation = ({ metadata }: { readonly metadata: Annotation }) => metadata._tag === "Selection"
+    ? <div className="selection-actions"><span>Selected code</span><button type="button" disabled={disabled} onClick={() => discuss("ask")}>Ask about this ↗</button><button type="button" disabled={disabled} onClick={() => discuss("explore-alternative")}>Explore alternative</button></div>
+    : <button className="line-discussion" type="button" onClick={() => onQuestion(metadata.id)}><span aria-hidden="true">↳</span> {metadata.text}</button>;
 
+  // Use the header slot: disabling headers in Diffs 1.3.6 skips its initial render when the custom element supplies an empty pre.
+  const renderHeader = () => <div className="revision-file-heading"><span title={newFile.name}>{newFile.name}</span><div className="diff-actions" aria-label={"Discuss " + source.label}>
+      <button type="button" disabled={disabled} onClick={() => discuss("ask")}>Ask ↗</button>
+      <button type="button" disabled={disabled} onClick={() => discuss("explore-alternative")}>Explore alternative</button>
+    </div></div>;
   return <div className="code-comparison">
-    <MultiFileDiff<Annotation> className="diffduck-diff" disableWorkerPool oldFile={oldFile} newFile={newFile}
-      options={options} selectedLines={selectedLines} lineAnnotations={annotations}
-      renderHeaderMetadata={() => <div className="diff-actions" aria-label="Discuss this example">
-        <button type="button" disabled={disabled} onClick={onAsk}>Ask ↗</button>
-        <button type="button" disabled={disabled} onClick={onExplore}>Explore alternative</button>
-      </div>}
-      renderAnnotation={({ metadata }) => metadata._tag === "Selection"
-        ? <div className="selection-actions"><span>Selected code</span><button type="button" onClick={onAsk}>Ask about this ↗</button><button type="button" onClick={onExplore}>Explore alternative</button></div>
-        : <button className="line-discussion" type="button" onClick={() => onQuestion(metadata.id)}><span aria-hidden="true">↳</span> {metadata.text}</button>}
-    />
+    {previous === null ? <File<Annotation> className="diffduck-diff" disableWorkerPool file={newFile} options={commonOptions} selectedLines={selectedLines} lineAnnotations={annotations} renderCustomHeader={renderHeader} renderAnnotation={renderAnnotation} />
+      : <MultiFileDiff<Annotation> className="diffduck-diff" disableWorkerPool oldFile={oldFile} newFile={newFile} options={diffOptions} selectedLines={selectedLines} lineAnnotations={annotations} renderCustomHeader={renderHeader} renderAnnotation={renderAnnotation} />}
     <details className="keyboard-selection"><summary>Choose a line range</summary>
-      <form key={revision.id} onSubmit={(event) => {
-        event.preventDefault();
+      <form onSubmit={(event) => {
+        event.preventDefault(); if (disabled) return;
         const fields = new FormData(event.currentTarget);
-        const parsed = questionTargetSchema.safeParse({ _tag: "Lines", side: fields.get("side"), startLine: Number(fields.get("start")), endLine: Number(fields.get("end")) });
-        if (!parsed.success || captureTarget(parsed.data, { before: scenario.before.code, after: scenario.after.code })._tag === "Err") { onInvalidSelection(); return; }
-        onSelect(parsed.data); onAsk();
+        const parsed = rangeFieldsSchema.safeParse({ side: fields.get("side"), start: fields.get("start"), end: fields.get("end") });
+        if (!parsed.success || parsed.data.start > parsed.data.end) { onInvalidSelection("Choose a valid, ordered line range."); return; }
+        const target = resolveRevisionSelection(panel, parsed.data);
+        if (target._tag === "Err") onInvalidSelection(target.error.message); else onDiscuss(target.value, "ask");
       }}>
-        <label>Side <select name="side" defaultValue="after" disabled={disabled}><option value="before">Before</option><option value="after">After</option></select></label>
+        <label>Version <select name="side" defaultValue="additions" disabled={disabled}><option value="additions">{source.label}</option>{previous !== null ? <option value="deletions">{previous.label} · previous</option> : null}</select></label>
         <label>From <input name="start" type="number" min="1" required defaultValue="1" disabled={disabled} /></label>
         <label>To <input name="end" type="number" min="1" required defaultValue="1" disabled={disabled} /></label>
         <button type="submit" disabled={disabled}>Attach lines</button>

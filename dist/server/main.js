@@ -37017,6 +37017,13 @@ var toolContracts = {
   cancel_diffduck_question: { input: questionRefSchema, output: resultSchema(sessionSnapshotSchema) },
   adopt_diffduck_alternative: { input: adoptAlternativeSchema, output: resultSchema(sessionSnapshotSchema) }
 };
+var appToolResultEnvelopeSchema = external_exports.strictObject({
+  format: external_exports.literal("diffduck.app-result.v1"),
+  json: external_exports.string()
+});
+function encodeAppToolResult(result) {
+  return { format: "diffduck.app-result.v1", json: JSON.stringify(projectToolResult(result)) };
+}
 function projectToolResult(result) {
   if (result._tag === "Err") return { _tag: "Err", error: { _tag: result.error._tag, message: result.error.message } };
   return { _tag: "Ok", value: result.value };
@@ -37034,15 +37041,17 @@ function createDiffDuckServer(sessions2, readAppHtml) {
       description,
       // Pass the complete strict schema: passing .shape would discard root strictness.
       inputSchema: boundarySchema,
-      // MCP output schemas must be objects. Errors use isError and are parsed separately.
-      outputSchema: toolContracts[name].output.options[0].unwrap(),
+      // The SDK requires an object success schema; errors travel as typed JSON text.
+      outputSchema: visibility === "app" ? appToolResultEnvelopeSchema : toolContracts[name].output.options[0].unwrap(),
       annotations: { readOnlyHint: readOnly, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: { ui: renders ? { resourceUri, visibility: [visibility] } : { visibility: [visibility] } }
     }, (raw) => {
       const parsed = inputSchema.safeParse(raw);
       const result = projectToolResult(parsed.success ? execute(parsed.data) : fail("InvalidInput", "The command does not match the DiffDuck tool contract."));
-      const content = result._tag === "Err" ? result.error.message : name === "get_diffduck_question" || name === "respond_in_diffduck" ? JSON.stringify(result) : renders ? "Opened DiffDuck. Select code to discuss its developer-facing effect." : "DiffDuck discussion state updated.";
-      return { isError: result._tag === "Err", structuredContent: result, content: [{ type: "text", text: content }] };
+      const wireResult = visibility === "app" ? encodeAppToolResult(result) : result;
+      const content = [{ type: "text", text: JSON.stringify(wireResult) }];
+      if (result._tag === "Err") return { isError: true, content };
+      return { isError: false, structuredContent: wireResult, content };
     });
   }
   register(
