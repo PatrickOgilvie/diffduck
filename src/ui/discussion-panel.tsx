@@ -41,7 +41,7 @@ export function DiscussionPanel({ controller, state, scenario, tab, composerRef,
   const draftNumber = scenario.revisions.findIndex((revision) => revision.id === tab.draft.revisionId) + 1;
   const captured = draftRevision === undefined ? null : captureTarget(tab.draft.target, { before: draftRevision.scenario.before.code, after: draftRevision.scenario.after.code });
   const disabled = !interactive || state.connection === "unavailable";
-  const sendingDisabled = disabled || state.activity !== "idle" || pending !== undefined || tab.draft.text.trim().length === 0;
+  const sendingDisabled = disabled || state.activity !== "idle" || state.synchronization !== "current" || pending !== undefined || tab.draft.text.trim().length === 0;
 
   useEffect(() => {
     if (tab.focusedQuestionId !== null) {
@@ -85,6 +85,11 @@ export function DiscussionPanel({ controller, state, scenario, tab, composerRef,
       })}
     </div>
     <form className="question-composer" onSubmit={(event) => { event.preventDefault(); controller.submit(); }}>
+      {state.synchronization === "required" ? <section className="pending-answer" aria-label="Recover question">
+        <p>DiffDuck could not confirm whether your question was saved. Nothing has been resent.</p>
+        <p>{state.pollingPaused ? "Automatic checking is paused. Check again before sending another question." : "Checking the saved discussion before allowing another question…"}</p>
+        <div className="small-actions"><button type="button" disabled={disabled || state.activity !== "idle"} onClick={() => controller.checkAgain()}>Check again</button></div>
+      </section> : null}
       <details className="draft-context"><summary>{scopeLabel(tab.draft.target)} <span>· r{draftNumber}</span></summary>
         {captured?._tag === "Ok" && captured.value._tag === "Lines" ? <pre><code>{captured.value.selectedText}</code></pre> : <p>Both complete code panes and this tab's preceding discussion will be attached.</p>}
         {draftRevision !== undefined ? <details><summary>Inspect full example</summary><pre><code>{draftRevision.scenario.before.code}</code></pre><pre><code>{draftRevision.scenario.after.code}</code></pre></details> : null}

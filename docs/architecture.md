@@ -43,4 +43,6 @@ The host must support MCP Apps text messages and app-only server calls. This imp
 
 The controller owns cancellation for every host call, ignores stale/foreign snapshots, allows at most one polling call in flight, and supervises every promise. Visibility and unmount cancel reads/timers; dispatch uncertainty does not imply non-delivery.
 
+Preparation can commit before its response is lost. The controller then requires reconciliation before permitting another submission, even if it has not yet seen a pending question. A fresh session read restores the stored question and its actions, or proves that preparation did not commit. Failed reads preserve this requirement, drafts and selection; bounded polling and explicit checking remain available. Reads started before the preparation are cancelled, so an older unchanged result cannot falsely resolve its outcome. Reconciliation never sends a host message.
+
 See [MCP Apps UI guidance](https://developers.openai.com/plugins/build/chatgpt-ui#separate-data-processing-from-ui-rendering) and [Diffs documentation](https://diffs.com/llms-full.txt). The real Codex-host round trip remains a separate release check.

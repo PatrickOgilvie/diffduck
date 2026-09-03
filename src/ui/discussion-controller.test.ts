@@ -28,6 +28,119 @@ function setup() {
 }
 
 describe("discussion controller", () => {
+  it.each(["InvalidHostResponse", "HostUnavailable", "InvalidInput"] as const)("recovers committed preparation after %s without sending it", async (failure) => {
+    const { controller, sessions, port, snapshot, sent } = setup();
+    const a = snapshot.scenarios[0];
+    if (a === undefined) throw new Error("Missing fixture scenario");
+    port.prepare = async (input) => {
+      const saved = sessions.prepare(input);
+      if (saved._tag !== "Ok") return saved;
+      return { _tag: "Err", error: { _tag: failure, message: "Preparation receipt lost" } };
+    };
+    controller.editDraft("Why this exact selection?");
+    controller.selectLines({ _tag: "Lines", side: "after", startLine: 3, endLine: 4 });
+    controller.submit(); await controller.settled();
+    const state = controller.getSnapshot();
+    const question = state.session?.scenarios[0]?.questions[0];
+    expect(question?.state).toEqual({ _tag: "Pending", delivery: "unconfirmed" });
+    expect(question?.context.example.id).toBe(a.currentRevisionId);
+    expect(question?.context.question.target).toMatchObject({ _tag: "Lines", side: "after", startLine: 3, endLine: 4 });
+    expect(state.tabs.get(a.scenarioId)?.draft.text).toBe("Why this exact selection?");
+    expect(sent).toHaveLength(0);
+    if (question === undefined) throw new Error("Missing recovered question");
+    port.prepare = async (input) => sessions.prepare(input);
+    controller.retryDelivery(question.context.question.id); await controller.settled();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain(question.context.id);
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions).toHaveLength(1);
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions[0]?.state).toEqual({ _tag: "Pending", delivery: "accepted" });
+    controller.dispose();
+  });
+
+  it("keeps drafts but prevents a second question until uncertain preparation is reconciled", async () => {
+    const { controller, sessions, port, snapshot, sent, pendingTimers, setTime } = setup();
+    const a = snapshot.scenarios[0]; const b = snapshot.scenarios[1];
+    if (a === undefined || b === undefined) throw new Error("Missing fixture tabs");
+    let prepares = 0;
+    port.prepare = async (input) => {
+      prepares++;
+      const saved = sessions.prepare(input);
+      if (saved._tag !== "Ok") return saved;
+      return { _tag: "Err", error: { _tag: "HostUnavailable", message: "Receipt unavailable" } };
+    };
+    port.read = async () => ({ _tag: "Err", error: { _tag: "HostUnavailable", message: "Read unavailable" } });
+    controller.editDraft("Original A question"); controller.submit(); await controller.settled();
+    expect(controller.getSnapshot().synchronization).toBe("required");
+    expect(pendingTimers.size).toBe(1);
+    controller.selectTab(b.scenarioId); controller.editDraft("New draft in B");
+    controller.submit(); await controller.settled();
+    expect(prepares).toBe(1);
+    expect(sent).toHaveLength(0);
+    setTime(120_000);
+    const next = pendingTimers.values().next().value;
+    if (next === undefined) throw new Error("Missing recovery timer");
+    pendingTimers.delete(next); next(); await controller.settled();
+    expect(controller.getSnapshot().pollingPaused).toBe(true);
+    expect(pendingTimers.size).toBe(0);
+    port.read = async (input) => sessions.read(input);
+    controller.checkAgain(); await controller.settled();
+    const state = controller.getSnapshot();
+    expect(state.synchronization).toBe("current");
+    expect(state.activeScenarioId).toBe(b.scenarioId);
+    expect(state.tabs.get(a.scenarioId)?.draft.text).toBe("Original A question");
+    expect(state.tabs.get(b.scenarioId)?.draft.text).toBe("New draft in B");
+    const question = state.session?.scenarios[0]?.questions[0];
+    if (question === undefined) throw new Error("Missing recovered question");
+    controller.stopWaiting(question.context.question.id); await controller.settled();
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions[0]?.state._tag).toBe("Cancelled");
+    expect(sent).toHaveLength(0);
+    controller.dispose();
+  });
+
+  it("allows explicit submission after a read proves the failed preparation did not commit", async () => {
+    const { controller, sessions, port, sent } = setup();
+    port.prepare = async () => ({ _tag: "Err", error: { _tag: "HostUnavailable", message: "Request did not arrive" } });
+    controller.editDraft("Preserve this draft"); controller.submit(); await controller.settled();
+    expect(controller.getSnapshot().synchronization).toBe("current");
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions).toHaveLength(0);
+    expect(sent).toHaveLength(0);
+    port.prepare = async (input) => sessions.prepare(input);
+    controller.submit(); await controller.settled();
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("does not use a read begun before preparation to clear its uncertainty", async () => {
+    const { controller, sessions, port, sent, pendingTimers } = setup();
+    let finishRead: (() => void) | undefined;
+    const waiting = new Promise<void>((resolve) => { finishRead = resolve; });
+    port.read = async (input) => {
+      const beforePreparation = sessions.read(input);
+      await waiting;
+      return beforePreparation;
+    };
+    controller.checkAgain();
+    port.prepare = async (input) => {
+      const saved = sessions.prepare(input);
+      if (saved._tag !== "Ok") return saved;
+      return { _tag: "Err", error: { _tag: "HostUnavailable", message: "Receipt lost" } };
+    };
+    controller.editDraft("Concurrent preparation"); controller.submit();
+    if (finishRead === undefined) throw new Error("Missing read completion");
+    finishRead(); await controller.settled();
+    expect(controller.getSnapshot().synchronization).toBe("required");
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions).toHaveLength(0);
+    port.read = async (input) => sessions.read(input);
+    const next = pendingTimers.values().next().value;
+    if (next === undefined) throw new Error("Missing reconciliation timer");
+    pendingTimers.delete(next); next(); await controller.settled();
+    expect(controller.getSnapshot().synchronization).toBe("current");
+    expect(controller.getSnapshot().session?.scenarios[0]?.questions).toHaveLength(1);
+    expect(sent).toHaveLength(0);
+    controller.dispose();
+  });
+
   it("pauses after the bounded wait and renews only on explicit checking", async () => {
     const { controller, pendingTimers, setTime, sent } = setup();
     controller.editDraft("Wait for an answer"); controller.submit(); await controller.settled();

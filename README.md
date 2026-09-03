@@ -12,6 +12,8 @@ Select a line range, ask why something changed, or explore an alternative. The q
 
 Version 0.2.0 is an initial discussion-workflow implementation. See [verification](docs/verification.md) for completed checks and the real-host release gate. A simulated development preview is not evidence of a working Codex-host message round trip.
 
+The first live Codex test exposed a failed question handoff followed by a stuck pending question. The current source adds recovery for a lost preparation receipt; the original host failure still needs diagnosis. The published `v0.2.0-preview.1` archive does not include that recovery change.
+
 ## Workflow
 
 1. Ask Codex: “Use DiffDuck to review these changes through before-and-after userland examples.”
@@ -65,6 +67,7 @@ The eight-tool protocol has three model-visible tools: `show_diffduck_review`, `
 - One outstanding question per session; up to 8 sessions per process. Each session is capped at 8 MiB of serialized retained data; each frozen question context is capped at 32 KiB. Oversized input is rejected, never silently truncated.
 - Polling runs every second initially, slows to every three seconds after 30 seconds, pauses while hidden, and stops after two minutes. “Check again” starts a fresh waiting period. It does not resubmit the question.
 - An uncertain message is never automatically resent. Explicit retry warns that Codex may already have received it. “Stop waiting” rejects late answers locally; it does not stop Codex.
+- If preparation may have saved a question but its receipt is lost, DiffDuck checks the saved discussion. Until that check succeeds, new submissions stay disabled while drafts remain editable. “Check again” can recover the pending question and its retry/stop controls; it never sends the question itself.
 - No listening network server, analytics, API-key storage, filesystem editing tool or automatic execution of example code. The server reads its bundled HTML and uses stdio. Diagnostics contain event categories and elapsed time only.
 - The parent Codex task retains its normal tools. The skill instructs it to remain in discussion mode; this is not a security sandbox for the model.
 

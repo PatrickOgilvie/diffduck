@@ -31,6 +31,7 @@ export type DiscussionView = {
   readonly tabs: ReadonlyMap<ScenarioId, TabView>;
   readonly activity: "idle" | "working";
   readonly connection: "available" | "unavailable";
+  readonly synchronization: "current" | "required";
   readonly message: string | null;
   readonly pollingPaused: boolean;
 };
@@ -55,7 +56,7 @@ function answeredCount(scenario: ScenarioDiscussion): number {
 export class DiscussionController {
   private state: DiscussionView = {
     session: null, activeScenarioId: null, tabs: new Map(), activity: "idle",
-    connection: "available", message: null, pollingPaused: false,
+    connection: "available", synchronization: "current", message: null, pollingPaused: false,
   };
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
@@ -95,7 +96,7 @@ export class DiscussionController {
         seenAnswerCount, unreadAnswers: Math.max(0, count - seenAnswerCount), message: previous?.message ?? null,
       });
     }
-    this.publish({ ...this.state, session, activeScenarioId, tabs, connection: "available", message: null });
+    this.publish({ ...this.state, session, activeScenarioId, tabs, connection: "available", synchronization: "current", message: null });
     this.scheduleRead();
   }
 
@@ -146,7 +147,7 @@ export class DiscussionController {
 
   /** Submit a captured draft through the supervised asynchronous lifecycle. */
   submit(): void {
-    if (this.state.activity !== "idle" || this.state.connection !== "available" || this.pendingQuestion() !== undefined) return;
+    if (this.state.activity !== "idle" || this.state.connection !== "available" || this.state.synchronization !== "current" || this.pendingQuestion() !== undefined) return;
     const id = this.state.activeScenarioId;
     const scenario = this.activeScenario();
     const session = this.state.session;
@@ -159,6 +160,8 @@ export class DiscussionController {
       target: draft.target, replyToQuestionId: draft.replyToQuestionId,
     });
     if (!parsed.success) { this.tabMessage(id, "Keep questions under 8,000 characters and select a valid range."); return; }
+    // A read started before this mutation cannot prove whether preparation committed.
+    this.readAbort?.abort();
     this.updateTab(id, (current) => ({ ...current, draft, message: null }));
     this.publish({ ...this.state, activity: "working" });
     this.own(async () => {
@@ -167,7 +170,16 @@ export class DiscussionController {
         if (this.disposed) return;
         if (prepared._tag === "Err") {
           this.handleFailure(prepared.error, id);
-          if (prepared.error._tag === "TranscriptChanged" || prepared.error._tag === "QuestionInFlight") await this.refresh();
+          switch (prepared.error._tag) {
+            case "HostUnavailable":
+            case "InvalidHostResponse":
+            case "InvalidInput": // A host rejection may follow a successful server mutation.
+            case "TranscriptChanged":
+            case "QuestionInFlight":
+              this.publish({ ...this.state, synchronization: "required" });
+              await this.refresh();
+              break;
+          }
           return;
         }
         this.accept(prepared.value.snapshot);
@@ -288,12 +300,13 @@ export class DiscussionController {
       if (this.disposed || signal.aborted) return;
       if (result._tag === "Err") this.handleFailure(result.error);
       else if (result.value._tag === "Changed") this.accept(result.value.snapshot);
+      else this.publish({ ...this.state, synchronization: "current", message: null });
     } finally { this.readInFlight = false; this.readAbort = undefined; this.scheduleRead(); }
   }
   private scheduleRead(): void {
     this.cancelTimer?.(); this.cancelTimer = undefined;
     if (this.disposed || !this.visible || this.readInFlight || this.state.connection === "unavailable") return;
-    if (this.pendingQuestion() === undefined) {
+    if (this.pendingQuestion() === undefined && this.state.synchronization === "current") {
       this.pollStartedAt = null;
       if (this.state.pollingPaused) this.publish({ ...this.state, pollingPaused: false });
       return;
