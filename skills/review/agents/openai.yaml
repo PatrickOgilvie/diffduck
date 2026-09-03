@@ -1,0 +1,5 @@
+interface:
+  display_name: "Review with DiffDuck"
+  short_description: "Compare code changes through userland examples"
+  default_prompt: "Use $review to discuss these changes through before-and-after userland examples in DiffDuck."
+  brand_color: "#D9A83B"

@@ -1,0 +1,2 @@
+dist/** linguist-generated=true -diff -whitespace
+THIRD_PARTY_NOTICES.txt linguist-generated=true -whitespace

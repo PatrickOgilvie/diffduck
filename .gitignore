@@ -1,0 +1,7 @@
+node_modules/
+dist/server/*.map
+release/
+.DS_Store
+.env
+.env.*
+*.log

@@ -1,0 +1,40 @@
+{
+  "name": "diffduck",
+  "version": "0.2.0",
+  "description": "Review the effect of code changes through before-and-after userland examples.",
+  "homepage": "https://github.com/PatrickOgilvie/diffduck",
+  "repository": "https://github.com/PatrickOgilvie/diffduck",
+  "author": {
+    "name": "github.com/PatrickOgilvie",
+    "url": "https://github.com/PatrickOgilvie"
+  },
+  "keywords": [
+    "code review",
+    "api design",
+    "before and after",
+    "developer tools"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "DiffDuck",
+    "shortDescription": "Talk through before-and-after code",
+    "longDescription": "Compare developer-facing examples, select exact code, and discuss each change in its own tab using your existing Codex task. Explore alternatives without editing your repository.",
+    "developerName": "github.com/PatrickOgilvie",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Review these changes through DiffDuck",
+      "Show this API proposal in DiffDuck",
+      "Compare the userland experience before and after"
+    ],
+    "brandColor": "#D9A83B",
+    "composerIcon": "./assets/diffduck-icon.svg",
+    "logo": "./assets/diffduck-logo.svg",
+    "logoDark": "./assets/diffduck-logo-dark.svg",
+    "screenshots": []
+  }
+}
