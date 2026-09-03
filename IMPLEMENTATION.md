@@ -13,7 +13,7 @@ Objective: implement the conversation-anchored Lense v0.2 spec, rename the plugi
 - [ ] Actual Codex host round trip: ask in A, switch to B, answer returns to A without remount.
 - [x] Session/context capacity checks and safe diagnostics; no repository-write tools or model API dependency.
 - [x] Updated review skill and ADR, build/package/install instructions, release artifact.
-- [ ] GitHub repository visibility confirmed, source scanned, repo pushed, release uploaded and remotely verified.
+- [x] GitHub repository visibility confirmed, source scanned, repo pushed, preview release uploaded and remotely verified.
 
 ## Decisions
 
@@ -33,3 +33,8 @@ Objective: implement the conversation-anchored Lense v0.2 spec, rename the plugi
 - Browser preview: line selection, exact before/after scope, A/B answer routing, draft preservation and explicit revision adoption passed. A custom-gutter integration error was found during testing and corrected.
 - New plugin installed through the personal marketplace. The current running task still exposes only the old Lense tool; reload Codex before the live-host check.
 - The custom gutter action is intentionally deferred after pointer activation failed in the host. Exact selection and inline actions remain available, with a keyboard range picker.
+- Public repository: https://github.com/PatrickOgilvie/diffduck
+- Preview release: https://github.com/PatrickOgilvie/diffduck/releases/tag/v0.2.0-preview.1
+- Archive SHA-256: ecbee6605109b702915d2673da4dc863235ad36857bc7400a8089d49b52d0800
+- Final installed UI/server bundles match the released build byte-for-byte. Original Lense remains installed; no user plugin was removed.
+- Remaining: reload Codex to expose the new model tools, verify the actual in-tab host round trip and near-limit context, then decide whether to promote a stable release.
